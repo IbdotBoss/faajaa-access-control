@@ -113,7 +113,11 @@ public:
 
         auto out = buttonChan.writer();
 
-        bool last_stable = true;  /* PC13 is active-low; idle = HIGH */
+        /* Let GPIO settle after reset before polling */
+        vTaskDelay(pdMS_TO_TICKS(200));
+
+        /* Read actual initial state instead of assuming HIGH */
+        bool last_stable = (HAL_GPIO_ReadPin(BTN_USER_PORT, BTN_USER_PIN) == GPIO_PIN_SET);
         uint32_t last_change = HAL_GetTick();
 
         while (true) {
@@ -581,10 +585,10 @@ extern "C" void fac_start_processes(void)
 {
     /*
      * Create a dedicated FreeRTOS task for the CSP process network.
-     * fsmProc runs on this task's stack (2048 words = 8KB).
+     * fsmProc runs on this task's stack (4096 words = 16KB).
      * The other 3 processes are spawned as separate tasks by csp::Run.
      * main() then proceeds to osKernelStart() to begin scheduling.
      */
-    xTaskCreate(csp_network_task, "CSPNet", 2048, NULL,
+    xTaskCreate(csp_network_task, "CSPNet", 4096, NULL,
                 tskIDLE_PRIORITY + 2, NULL);
 }
