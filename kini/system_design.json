@@ -1,0 +1,176 @@
+{
+  "project_name": "Faajaa Access Control",
+  "acronym": "FAC",
+  "version": "1.1",
+  "target_board": "STM32 NUCLEO-G474RE",
+  "core_architecture": {
+    "pattern": "host-client-edge",
+    "edge_device": "NUCLEO-G474RE running C firmware",
+    "middleware": "Python broker owning the serial port",
+    "clients": [
+      "Visitor GUI",
+      "Admin GUI"
+    ],
+    "optional_extensions": [
+      "local SQLite audit store"
+    ]
+  },
+  "design_goals": [
+    "fail-secure default behavior",
+    "non-blocking embedded state machine",
+    "support local passkey entry",
+    "support remote admin override",
+    "prevent simple replay of admin approval",
+    "prevent serial contention across multiple GUIs",
+    "provide clear logs and demo-friendly status updates"
+  ],
+  "implementation_scope": {
+    "core_required": [
+      "STM32 firmware in C",
+      "USB virtual serial communication",
+      "Python broker with exclusive serial ownership",
+      "Visitor GUI keypad",
+      "Admin GUI approve or deny interface",
+      "lockout logic",
+      "timeout logic",
+      "packet integrity checks",
+      "admin nonce challenge-response"
+    ],
+    "optional_now": [
+      "SQLite audit database",
+      "relay output instead of LED",
+      "WebSocket server between broker and GUIs"
+    ],
+    "future_work": [
+      "challenge-response for local keypad path",
+      "protected flash or OTP secret provisioning",
+      "multi-door deployment",
+      "central policy service",
+      "cloud dashboard and analytics"
+    ]
+  },
+  "firmware": {
+    "language": "C",
+    "ide_options": [
+      "STM32CubeIDE",
+      "PlatformIO"
+    ],
+    "requirements": [
+      "interrupt-driven or DMA-based UART RX",
+      "finite state machine",
+      "GPIO control for lock indicator",
+      "button input for request event",
+      "timeout handling without HAL_Delay blocking",
+      "RNG-based nonce generation if enabled on target"
+    ],
+    "states": [
+      "LOCKED_IDLE",
+      "VALIDATING_LOCAL",
+      "PENDING_ADMIN",
+      "UNLOCKED",
+      "DENIED",
+      "LOCKOUT",
+      "SYSTEM_FAULT"
+    ],
+    "security_responsibilities": [
+      "store and validate passkey reference",
+      "generate single-use admin nonce",
+      "verify admin approval token",
+      "invalidate stale nonce on timeout",
+      "invalidate pending admin request after local success",
+      "default to locked on reset"
+    ]
+  },
+  "broker": {
+    "language": "Python 3.11+",
+    "responsibilities": [
+      "open and maintain the only serial connection to the board",
+      "route messages between firmware and GUIs",
+      "timestamp and persist audit events",
+      "broadcast state changes to multiple clients",
+      "handle reconnect and malformed packet events",
+      "keep all logging local in the current version"
+    ],
+    "suggested_stack": [
+      "pyserial",
+      "asyncio",
+      "SQLite",
+      "FastAPI or simple TCP/WebSocket layer",
+      "CustomTkinter or PySide6 for GUIs"
+    ]
+  },
+  "visitor_gui": {
+    "features": [
+      "numeric keypad",
+      "masked passkey display",
+      "clear button",
+      "enter button",
+      "call admin button",
+      "status display"
+    ]
+  },
+  "admin_gui": {
+    "features": [
+      "incoming request notification",
+      "approve button",
+      "deny button",
+      "recent event log",
+      "current state display",
+      "pending request timeout indicator"
+    ]
+  },
+  "security_model": {
+    "core_claim": "security-aware academic prototype",
+    "avoid_claims": [
+      "full enterprise zero trust appliance",
+      "production PKI",
+      "fully secure local path if only static hash is transmitted"
+    ],
+    "integrity": [
+      "packet framing",
+      "CRC-16"
+    ],
+    "admin_anti_replay": {
+      "method": "nonce challenge-response",
+      "nonce_bytes": 16,
+      "expiry_seconds": 30,
+      "recommended_token": "HMAC-SHA256(secret, nonce || action)"
+    },
+    "local_path_note": "For the coursework build, local passkey can be verified on the MCU via the brokered serial path. Stronger local challenge-response is future work."
+  },
+  "testing": {
+    "functional": [
+      "valid passkey unlocks",
+      "invalid passkey denies",
+      "lockout after repeated failures",
+      "admin request produces pending state",
+      "valid admin approval unlocks",
+      "expired admin approval rejected"
+    ],
+    "robustness": [
+      "malformed packet handling",
+      "broker disconnect recovery",
+      "simultaneous visitor and admin actions",
+      "power-on reset returns to locked"
+    ],
+    "simulation": [
+      "Renode UART tests",
+      "fuzz malformed packet streams",
+      "state transition assertions"
+    ]
+  },
+  "deliverables": {
+    "code": [
+      "firmware",
+      "broker",
+      "visitor GUI",
+      "admin GUI"
+    ],
+    "documentation": [
+      "PRD",
+      "packet specification",
+      "flow diagram",
+      "limitations write-up"
+    ]
+  }
+}

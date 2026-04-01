@@ -1,0 +1,47 @@
+﻿node : node:internal/modules/cjs/loader:1424
+At line:1 char:1
++ node -e "const XLSX=require('xlsx'); const 
+wb=XLSX.readFile('Name_SID ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified:  
+   (node:internal/modules/cjs/loader:1424:S  
+  tring) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandE 
+   rror
+ 
+  throw err;
+  ^
+
+Error: Cannot find module 'xlsx'
+Require stack:
+- C:\Users\uthma\Documents\Dev 
+Mode\faajaa\school\Embedded Computing\[eval]
+    at Module._resolveFilename 
+(node:internal/modules/cjs/loader:1421:15)
+    at defaultResolveImpl 
+(node:internal/modules/cjs/loader:1059:19)
+    at resolveForCJSWithHooks 
+(node:internal/modules/cjs/loader:1064:22)
+    at Module._load 
+(node:internal/modules/cjs/loader:1227:37)
+    at TracingChannel.traceSync 
+(node:diagnostics_channel:328:14)
+    at wrapModuleLoad 
+(node:internal/modules/cjs/loader:245:24)
+    at Module.require 
+(node:internal/modules/cjs/loader:1504:12)
+    at require 
+(node:internal/modules/helpers:152:16)
+    at [eval]:1:12
+    at runScriptInThisContext 
+(node:internal/vm:219:10) {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    'C:\\Users\\uthma\\Documents\\Dev 
+Mode\\faajaa\\school\\Embedded 
+Computing\\[eval]'
+  ]
+}
+
+Node.js v24.11.1

@@ -1,0 +1,26 @@
+# Build output
+firmware/Debug/
+firmware/Release/
+*.o
+*.d
+*.lst
+*.map
+*.elf
+*.hex
+*.bin
+
+# IDE local settings
+firmware/.settings/
+.vscode/
+
+# OS files
+Thumbs.db
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc
+
+# Claude Code internals
+.agents/
+.claude/
