@@ -29,7 +29,7 @@ Communication uses a custom binary packet protocol over LPUART1 at 115200 baud w
 
 ### CSP4CMSIS Library
 
-The CSP4CMSIS library used in this project is based on the interrupt-capable variant by Oliver Faust:
+The CSP4CMSIS library used in this project is based on the interrupt-capable variant by [Oliver Faust](https://github.com/OliverFaust):
 
 - [CSP4CMSIS-nucleo-g474re_v10_Interrupt](https://github.com/OliverFaust/CSP4CMSIS-nucleo-g474re_v10_Interrupt) - Interrupt variant with `putFromISR()`, `BufferPolicy` support, and ISR-to-channel integration (used in this project)
 - [CSP4CMSIS_for_NUCLEO-G474RE](https://github.com/OliverFaust/CSP4CMSIS_for_NUCLEO-G474RE) - Basic variant with rendezvous channels and ALT selection
