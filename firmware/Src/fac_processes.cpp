@@ -363,8 +363,9 @@ private:
             fail_count++;
             if (fail_count >= MAX_FAIL_ATTEMPTS) {
                 send_pass_result(tx, RESULT_LOCKOUT_ACTIVE, pkt.request_id);
-                send_lockout_notice(tx, pkt.request_id, 0, 0);
                 send_status(tx, STATE_CODE_LOCKOUT, cur_req_id);
+                send_lockout_notice(tx, pkt.request_id,
+                                    LOCKOUT_DURATION_MS, HAL_GetTick());
                 start_timeout(timeout_ms, timeout_started, LOCKOUT_DURATION_MS);
                 state = FsmState::LOCKOUT;
             } else {
@@ -470,7 +471,18 @@ private:
             break;
 
         case FsmState::DENIED:
-            /* Ignore packets during brief denial display */
+            switch (pkt.msg_type) {
+            case MSG_PASS_TRY:
+                stop_timeout(timeout_ms, timeout_started);
+                do_passkey(pkt, state, fail_count, cur_req_id,
+                           nonce_valid, timeout_ms, timeout_started, tx);
+                break;
+            case MSG_PING:
+                send_pong(tx, pkt.request_id);
+                break;
+            default:
+                break;
+            }
             break;
 
         case FsmState::LOCKOUT:

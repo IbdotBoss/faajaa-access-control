@@ -47,7 +47,7 @@ private:
         TaskCtx* ctx = new TaskCtx{ &std::get<I>(procs), sem };
         
         xTaskCreate(
-            (TaskFunction_t)ThreadFuncWrapper,
+            (TaskFunction_t)ThreadFuncWrapper, 
             std::get<I>(procs).name(),
             512,
             ctx,

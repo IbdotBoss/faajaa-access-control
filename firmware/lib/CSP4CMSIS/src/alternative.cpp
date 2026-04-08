@@ -10,21 +10,25 @@ AltScheduler::AltScheduler() {
     initForCurrentTask(); 
 }
 
-AltScheduler::~AltScheduler() { 
-    if (event_group) vEventGroupDelete(event_group); 
+AltScheduler::~AltScheduler() {
+    /* Do NOT delete the event group — it is shared across
+     * ALT instances for the same task to avoid use-after-free
+     * when guard-channel state outlives a stack-local Alternative. */
 }
 
 void AltScheduler::initForCurrentTask() {
     waiting_task_handle = xTaskGetCurrentTaskHandle();
-    // Using standard FreeRTOS event group creation
-    event_group = xEventGroupCreate();
+    /* Create ONE event group per task and reuse it across
+     * successive Alternative instances.  A static local is
+     * acceptable here because FsmProcess is the only ALT user
+     * in this firmware.  For multi-task ALT, a per-task map
+     * (or FreeRTOS thread-local storage) would be needed. */
+    static EventGroupHandle_t shared_eg = xEventGroupCreate();
+    event_group = shared_eg;
 }
 
 unsigned int AltScheduler::select(Guard** guardArray, size_t amount, size_t offset) {
     if (amount == 0) return 0;
-
-    const char* tname = pcTaskGetName(NULL);
-    // printf("[%s] ALT: select start (guards: %u, offset: %u)\r\n", tname, amount, offset);
 
     EventBits_t wait_mask = 0;
     for(size_t i = 0; i < amount; ++i) wait_mask |= (1 << i);
@@ -32,13 +36,14 @@ unsigned int AltScheduler::select(Guard** guardArray, size_t amount, size_t offs
     xEventGroupClearBits(event_group, wait_mask); 
 
     int ready_idx = -1;
+
     // Phase 1: Enable
+    // We poll guards starting from 'offset' to support Fair ALT
     for(size_t i = 0; i < amount; ++i) {
         size_t idx = (i + offset) % amount; 
-        // printf("[%s] ALT: Enabling guard %u...\r\n", tname, idx);
         
+        // If enable() returns true, that guard is ready IMMEDIATELY
         if(guardArray[idx]->enable(this, (1 << idx))) { 
-            // printf("[%s] ALT: Guard %u was ALREADY ready.\r\n", tname, idx);
             ready_idx = (int)idx; 
             break; 
         }
@@ -47,14 +52,14 @@ unsigned int AltScheduler::select(Guard** guardArray, size_t amount, size_t offs
     // Phase 2: Wait
     EventBits_t fired = 0;
     if (ready_idx != -1) {
+        // We already found a winner in the Enable phase
         fired = (1 << ready_idx);
     } else {
-        // printf("[%s] ALT: No guard ready. Sleeping on event group...\r\n", tname);
+        // Block until a channel becomes ready or a timer expires
         fired = xEventGroupWaitBits(event_group, wait_mask, pdTRUE, pdFALSE, portMAX_DELAY);
-        // printf("[%s] ALT: Woke up! Fired bits: 0x%lx\r\n", tname, fired);
     }
 
-    // Identify which guard fired
+    // Identify which guard fired (lowest bit wins if multiple set simultaneously)
     size_t selected = 0;
     for(size_t i = 0; i < amount; ++i) {
         if (fired & (1 << i)) { 
@@ -64,13 +69,16 @@ unsigned int AltScheduler::select(Guard** guardArray, size_t amount, size_t offs
     }
 
     // Phase 3: Disable
-    // printf("[%s] ALT: Disabling all guards.\r\n", tname);
+    // Crucial: We tell guards we are leaving. If disable() returns true for a 
+    // guard we didn't 'select', it means a rendezvous almost happened but we 
+    // missed it—this is handled by the internal channel state machines.
     for(size_t i = 0; i < amount; ++i) {
         guardArray[i]->disable();
     }
 
     // Phase 4: Activate
-    // printf("[%s] ALT: Activating guard %u.\r\n", tname, selected);
+    // The "Commit" phase. For Rendezvous, this moves the data.
+    // For sampling channels, this might result in a 'no-op' if data was dropped.
     guardArray[selected]->activate();
     
     return (unsigned int)selected;
@@ -78,7 +86,7 @@ unsigned int AltScheduler::select(Guard** guardArray, size_t amount, size_t offs
 
 void AltScheduler::wakeUp(EventBits_t bit) {
     if(!event_group) return;
-    // printf("[%s] ALT: wakeUp called for bit 0x%lx\r\n", pcTaskGetName(NULL), bit);
+
     if (xPortIsInsideInterrupt()) {
         BaseType_t woken = pdFALSE;
         xEventGroupSetBitsFromISR(event_group, bit, &woken);
@@ -87,17 +95,28 @@ void AltScheduler::wakeUp(EventBits_t bit) {
         xEventGroupSetBits(event_group, bit);
     }
 }
+
 // =============================================================
 // TimerGuard Implementation
 // =============================================================
-TimerGuard::TimerGuard(csp::Time delay) 
-    : parent_alt(nullptr), delay_ticks(delay.to_ticks()), assigned_bit(0) 
+TimerGuard::TimerGuard(csp::Time delay)
+    : parent_alt(nullptr), delay_ticks(delay.to_ticks()), assigned_bit(0)
 {
-    timer_handle = xTimerCreate("CspTmr", delay_ticks, pdFALSE, this, TimerCallback);
+    /* Reuse a single FreeRTOS software timer across ALT cycles
+     * to avoid async xTimerDelete races and heap fragmentation. */
+    static TimerHandle_t shared_timer = nullptr;
+    if (shared_timer == nullptr) {
+        shared_timer = xTimerCreate("CspTmr", delay_ticks, pdFALSE,
+                                    this, TimerCallback);
+    } else {
+        vTimerSetTimerID(shared_timer, this);
+        xTimerChangePeriod(shared_timer, delay_ticks, portMAX_DELAY);
+    }
+    timer_handle = shared_timer;
 }
 
-TimerGuard::~TimerGuard() { 
-    if (timer_handle) xTimerDelete(timer_handle, 0); 
+TimerGuard::~TimerGuard() {
+    /* Do NOT delete — the shared timer persists across cycles. */
 }
 
 void TimerGuard::TimerCallback(TimerHandle_t x) {
@@ -110,6 +129,7 @@ void TimerGuard::TimerCallback(TimerHandle_t x) {
 bool TimerGuard::enable(AltScheduler* a, EventBits_t b) {
     parent_alt = a; 
     assigned_bit = b;
+    if (delay_ticks == 0) return true; // Instant timeout
     xTimerStart(timer_handle, 0);
     return false; 
 }
@@ -144,16 +164,15 @@ Alternative::Alternative(std::initializer_list<Guard*> list) {
 }
 
 int Alternative::priSelect() {
-    return (int)internal_alt.select(internal_guards, num_guards);
+    return (int)internal_alt.select(internal_guards, num_guards, 0);
 }
 
 int Alternative::fairSelect() {
     if (num_guards <= 1) return priSelect();
 
-    // Perform selection starting from our fairness index
     size_t actual_index = internal_alt.select(internal_guards, num_guards, fair_select_start_index);
     
-    // Update index for next time
+    // Update fairness index to ensure next guard has priority next time
     fair_select_start_index = (actual_index + 1) % num_guards;
 
     return (int)actual_index;

@@ -50,19 +50,39 @@
     ]
   },
   "firmware": {
-    "language": "C",
+    "language": "C/C++ (CSP4CMSIS processes are C++)",
     "ide_options": [
       "STM32CubeIDE",
       "PlatformIO"
     ],
     "requirements": [
-      "interrupt-driven or DMA-based UART RX",
-      "finite state machine",
+      "FreeRTOS CMSIS-RTOS v2 real-time kernel",
+      "CSP4CMSIS process network with rendezvous channels",
+      "ALT (selective wait) construct in FSM process",
+      "interrupt-driven UART RX with ISR ring buffer",
+      "finite state machine (hosted inside FsmProcess)",
       "GPIO control for lock indicator",
-      "button input for request event",
-      "timeout handling without HAL_Delay blocking",
-      "RNG-based nonce generation if enabled on target"
+      "button input with debounce (ButtonProcess)",
+      "timeout handling via FreeRTOS delays and ALT guards",
+      "RNG-based nonce generation"
     ],
+    "concurrency": {
+      "rtos": "FreeRTOS with CMSIS-RTOS v2 wrapper",
+      "library": "CSP4CMSIS — Communicating Sequential Processes for CMSIS",
+      "processes": [
+        "UartRxProcess — reads UART ring buffer, assembles packets, writes to packetChan",
+        "ButtonProcess — debounces user button, writes press events to buttonChan",
+        "FsmProcess — ALT-selects on packetChan + buttonChan, runs state machine, writes responses to txChan",
+        "UartTxProcess — reads txChan, encodes and transmits packets over UART"
+      ],
+      "channels": [
+        "packetChan (One2OneChannel<fac_packet_t>) — UartRx → Fsm",
+        "buttonChan (One2OneChannel<bool>) — Button → Fsm",
+        "txChan (One2OneChannel<fac_packet_t>) — Fsm → UartTx"
+      ],
+      "heap_budget_bytes": 30720,
+      "note": "Rendezvous channels provide zero-buffered synchronous handoff between processes. The ALT construct allows FsmProcess to wait on multiple channel inputs with timeout."
+    },
     "states": [
       "LOCKED_IDLE",
       "VALIDATING_LOCAL",

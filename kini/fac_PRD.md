@@ -76,16 +76,17 @@ The system follows a Host-Client-Edge architecture.
 
 ### 6.1 Edge Layer: NUCLEO-G474RE
 
-The NUCLEO-G474RE is the trusted embedded device and source of truth for physical lock state.
+The NUCLEO-G474RE is the trusted embedded device and source of truth for physical lock state. The firmware runs FreeRTOS (CMSIS-RTOS v2) and uses the CSP4CMSIS library to structure the application as a network of four concurrent processes connected by rendezvous channels, rather than a bare-metal superloop. The finite state machine is hosted inside one of these processes (FsmProcess), which uses an ALT construct to selectively wait on inputs from both the UART and button processes.
 
 Responsibilities:
 
-- maintain the finite state machine
-- receive and parse commands from the host
+- maintain the finite state machine (inside FsmProcess)
+- receive and parse commands from the host (UartRxProcess)
 - validate local access credentials
 - validate administrator approval tokens for remote override
 - control LED or relay output representing lock state
-- monitor local input such as a button for access request
+- monitor local input such as a button for access request (ButtonProcess)
+- encode and transmit response packets (UartTxProcess)
 - enforce lockout and timeout rules
 - default to locked on startup or reset
 
@@ -397,7 +398,7 @@ The middleware broker exists because only one process should own the physical se
 
 ### Software
 
-- STM32 firmware in C using STM32CubeIDE or equivalent
+- STM32 firmware in C/C++ using STM32CubeIDE with FreeRTOS and CSP4CMSIS
 - Python middleware broker
 - Visitor GUI
 - Admin GUI
@@ -457,10 +458,10 @@ The system becomes more resistant to basic brute-force behaviour.
 If the firmware uses blocking delays, the device may become unresponsive while waiting for timeouts or remote input.
 
 #### Approach used in this solution
-The firmware is designed around a non-blocking finite state machine with interrupt-driven or event-driven input handling.
+The firmware runs FreeRTOS and uses the CSP4CMSIS library to structure the application as four concurrent processes (UartRx, Button, FSM, UartTx) connected by rendezvous channels. The FSM process uses an ALT construct with timeout guards to wait on multiple inputs simultaneously without blocking other processes. Each process runs in its own FreeRTOS task with preemptive scheduling.
 
 #### Result
-The system remains responsive while handling local entry, remote approval, and timeout logic.
+The system remains responsive while handling local entry, remote approval, and timeout logic. Concurrent inputs from UART and the button are handled by separate processes and delivered to the FSM through dedicated channels.
 
 ## 17. Future Limitations and Future Work
 
@@ -502,11 +503,15 @@ Add a cloud synchronization layer that uploads logs from the broker to a managed
 
 ### Firmware
 
-- C on STM32CubeIDE
-- UART receive handling with interrupts or DMA
-- finite state machine for access logic
+- C/C++ on STM32CubeIDE with FreeRTOS (CMSIS-RTOS v2)
+- CSP4CMSIS library for structured concurrency using Communicating Sequential Processes
+- four concurrent processes connected by three rendezvous channels:
+  - UartRxProcess: interrupt-driven UART ring buffer, byte-by-byte packet assembly
+  - ButtonProcess: GPIO debounce with press-event output
+  - FsmProcess: ALT-based selective wait on packet and button channels, runs the state machine
+  - UartTxProcess: packet encoding and UART transmission
 - GPIO control for LED or relay
-- hardware RNG if used for nonce generation
+- hardware RNG for nonce generation
 
 ### Middleware
 

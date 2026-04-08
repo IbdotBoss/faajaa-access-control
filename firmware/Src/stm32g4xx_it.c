@@ -63,10 +63,11 @@ void TIM1_UP_TIM16_IRQHandler(void)
 }
 
 /* -----------------------------------------------------------------------
- * LPUART1 global interrupt
+ * LPUART global interrupt  (startup file uses LPUART_IRQHandler, not
+ * LPUART1_IRQHandler — the "1" is dropped in the vector table name)
  * --------------------------------------------------------------------- */
 
-void LPUART1_IRQHandler(void)
+void LPUART_IRQHandler(void)
 {
     uart_comm_irq_handler();
 }

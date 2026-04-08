@@ -21,6 +21,17 @@ Thumbs.db
 __pycache__/
 *.pyc
 
+# Broker audit logs
+broker/fac_audit.log
+
 # Claude Code internals
 .agents/
 .claude/
+
+# Reference repos (cloned locally, not part of this project)
+CSP4CMSIS_for_NUCLEO-G474RE/
+CSP4CMSIS-nucleo-g474re_v10_Interrupt/
+
+# Misc / not needed in repo
+details/
+fac_audit.log

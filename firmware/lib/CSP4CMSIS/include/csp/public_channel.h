@@ -3,7 +3,7 @@
 
 #include "rendezvous_channel.h"
 #include "buffered_channel.h"
-#include "overwriting_channel.h"
+#include "sync_channel.h"
 
 namespace csp {
 
@@ -13,8 +13,6 @@ template <typename T> class Chanout;
 
 /**
  * @brief Pipe Operators for Alternative Syntax.
- * These create a ChannelBinding (defined in alt_channel_sync.h)
- * using the unified getGuard() interface.
  */
 template <typename T>
 ChannelBinding<T, Chanin<T>> operator|(Chanin<T>& chan, T& dest) {
@@ -37,13 +35,13 @@ private:
 public:
     Chanout(internal::BaseAltChan<T>* ptr) : internal_ptr(ptr) {}
     
-    // Blocking write
     void operator<<(const T& data) { internal_ptr->output(&data); }
     void write(const T& data) { internal_ptr->output(&data); }
     
-    /**
-     * @brief Unified Guard accessor for ChannelBinding.
-     */
+    bool putFromISR(const T& data) { 
+        return internal_ptr->putFromISR(data); 
+    }
+    
     internal::Guard* getGuard(const T& source) { 
         return internal_ptr->getOutputGuard(source); 
     }
@@ -56,59 +54,93 @@ private:
 public:
     Chanin(internal::BaseAltChan<T>* ptr) : internal_ptr(ptr) {}
     
-    // Blocking read
     void operator>>(T& dest) { internal_ptr->input(&dest); }
     void read(T& dest) { internal_ptr->input(&dest); }
     
-    /**
-     * @brief Unified Guard accessor for ChannelBinding.
-     */
     internal::Guard* getGuard(T& dest) { 
         return internal_ptr->getInputGuard(dest); 
     }
 };
 
 // =============================================================
-// Static Channel Containers
+// Static Channel Containers (v1.1 Sampling API)
 // =============================================================
 
 /**
- * @brief Zero-capacity Rendezvous Channel.
+ * @brief Zero-capacity Synchronization Primitive.
+ * In KeepNewest/Oldest modes, it behaves as a pure sampling port.
  */
-template <typename T>
-class One2OneChannel {
+template <typename T, BufferPolicy P = BufferPolicy::Block>
+class SamplingChannel {
 private:
-    internal::RendezvousChannel<T> internal_chan;
+    internal::RendezvousChannel<T, P> internal_chan;
 public:
-    One2OneChannel() = default;
+    SamplingChannel() = default;
     
     Chanout<T> writer() { return Chanout<T>(&internal_chan); }
     Chanin<T> reader() { return Chanin<T>(&internal_chan); }
 };
-
-template <typename T>
-using Channel = One2OneChannel<T>;
 
 /**
- * @brief Buffered Channel with Static Capacity.
+ * @brief Buffered Asynchronous Primitive.
+ * Decouples timing. Supports Lossy policies (KeepNewest/Oldest).
  */
-template <typename T, size_t SIZE>
-class BufferedOne2OneChannel {
+template <typename T, size_t SIZE, BufferPolicy P = BufferPolicy::Block>
+class SamplingBufferedChannel {
 private:
-    internal::BufferedChannel<T> internal_chan;
+    internal::BufferedChannel<T, P> internal_chan;
 public:
-    BufferedOne2OneChannel() : internal_chan(SIZE) {}
+    SamplingBufferedChannel() : internal_chan(SIZE) {}
     
     Chanout<T> writer() { return Chanout<T>(&internal_chan); }
     Chanin<T> reader() { return Chanin<T>(&internal_chan); }
 };
 
-// --- Standard CSP Aliases ---
-template <typename T> 
-using Any2OneChannel = One2OneChannel<T>;
+/**
+ * @brief Synchronous Signal Channel (void data).
+ */
+template <BufferPolicy P = BufferPolicy::Block>
+class SignalChannel {
+private:
+    internal::SyncChannel<P> internal_chan;
+public:
+    SignalChannel() = default;
+    internal::SyncChannel<P>* getInternal() { return &internal_chan; }
+};
 
-template <typename T, size_t S> 
-using BufferedAny2OneChannel = BufferedOne2OneChannel<T, S>;
+// =============================================================
+// Public Aliases & Legacy Support
+// =============================================================
+
+/**
+ * @brief Standard CSP rendezvous channel (Blocking).
+ */
+template <typename T>
+using Channel = SamplingChannel<T, BufferPolicy::Block>;
+
+/**
+ * @brief Standard CSP buffered channel (Blocking).
+ */
+template <typename T, size_t SIZE>
+using BufferedChannel = SamplingBufferedChannel<T, SIZE, BufferPolicy::Block>;
+
+/**
+ * @brief Semantic alias for shared input ports.
+ */
+template <typename T, BufferPolicy P = BufferPolicy::Block> 
+using Any2OneChannel = SamplingChannel<T, P>;
+
+template <typename T, size_t S, BufferPolicy P = BufferPolicy::Block> 
+using BufferedAny2OneChannel = SamplingBufferedChannel<T, S, P>;
+
+/**
+ * @brief Legacy API 1.0 Compatibility Aliases.
+ */
+template <typename T, BufferPolicy P = BufferPolicy::Block>
+using One2OneChannel = SamplingChannel<T, P>;
+
+template <typename T, size_t S, BufferPolicy P = BufferPolicy::Block>
+using BufferedOne2OneChannel = SamplingBufferedChannel<T, S, P>;
 
 } // namespace csp
 
